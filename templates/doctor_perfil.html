@@ -1,0 +1,41 @@
+{% extends "_layout.html" %}
+{% block title %}Perfil del Doctor{% endblock %}
+{% block content %}
+<h2>Perfil del Doctor</h2>
+<article>
+  <header>
+    <h3>{{ medico.usuario.nombre }} {{ medico.usuario.apellido }}</h3>
+    <p><strong>Especialidad:</strong> {{ medico.especialidad }}</p>
+  </header>
+</article>
+
+<h3>Citas agendadas (desde hoy)</h3>
+{% if citas|length == 0 %}
+  <p>No hay citas próximas.</p>
+{% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Paciente</th>
+        <th>Inicio</th>
+        <th>Fin</th>
+        <th>Estado</th>
+        <th>Notas</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in citas %}
+      <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.paciente.nombre }} {{ c.paciente.apellido }}</td>
+        <td>{{ c.start_at }}</td>
+        <td>{{ c.end_at }}</td>
+        <td>{{ c.estado }}</td>
+        <td>{{ c.notas or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}

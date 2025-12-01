@@ -1,0 +1,55 @@
+{% extends "_layout.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+{% if current_user.tipo == 'MEDICO' %}
+  {% if saludo and doctor_nombre %}
+    <h2>{{ saludo }}, {{ doctor_nombre }}.</h2>
+  {% else %}
+    <h2>Bienvenido(a) doctor(a).</h2>
+  {% endif %}
+
+  <p>
+    <a href="{{ url_for('doctor_consultas') }}">Ver mis citas pendientes</a>
+    ·
+    <a href="{{ url_for('doctor_concluidas') }}">Ver citas concluidas</a>
+  </p>
+
+  <!-- Para el dashboard del médico pediste solo botones, sin tabla -->
+{% else %}
+  <!-- Vista original para paciente/admin -->
+  <h2>Dashboard</h2>
+  <p>Bienvenido, {{ current_user.nombre }} {{ current_user.apellido }} ({{ current_user.tipo }})</p>
+  <p>
+    <a href="{{ url_for('citas_new') }}">Agendar nueva cita</a> ·
+    <a href="{{ url_for('citas_list') }}">Ver mis citas</a>
+    {% if current_user.tipo == 'MEDICO' %}· <a href="{{ url_for('doctor_consultas') }}">Mis consultas</a>{% endif %}
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Médico</th>
+        <th>Paciente</th>
+        <th>Inicio</th>
+        <th>Fin</th>
+        <th>Estado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in citas %}
+      <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.medico.usuario.nombre }} {{ c.medico.usuario.apellido }} ({{ c.medico.especialidad }})</td>
+        <td>{{ c.paciente.nombre }} {{ c.paciente.apellido }}</td>
+        <td>{{ c.start_at }}</td>
+        <td>{{ c.end_at }}</td>
+        <td>{{ c.estado }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+
+{% endblock %}

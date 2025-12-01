@@ -1,0 +1,24 @@
+{% extends "_layout.html" %}
+{% block title %}Nueva cita{% endblock %}
+{% block content %}
+<h2>Nueva cita</h2>
+<form method="post">
+<label>Médico
+<select name="medico_id" required>
+{% for m in medicos %}
+<option value="{{ m.id }}">{{ m.usuario.nombre }} — {{ m.especialidad }}</option>
+{% endfor %}
+</select>
+</label>
+<label>Inicio
+<input type="datetime-local" name="start_at" required>
+</label>
+<label>Fin
+<input type="datetime-local" name="end_at" required>
+</label>
+<label>Notas
+<textarea name="notas" rows="3"></textarea>
+</label>
+<button type="submit">Crear</button>
+</form>
+{% endblock %}
