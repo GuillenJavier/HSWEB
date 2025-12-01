@@ -1,0 +1,36 @@
+{% extends "_layout.html" %}
+{% block title %}Expedientes de mis pacientes{% endblock %}
+{% block content %}
+<h2>Expedientes de mis pacientes</h2>
+
+{% if pacientes|length == 0 %}
+  <p>No hay pacientes registrados en tu historial de citas.</p>
+{% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Paciente</th>
+        <th>Email</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pacientes %}
+      <tr>
+        <td>{{ p.nombre }} {{ p.apellido }}</td>
+        <td>{{ p.email }}</td>
+        <td>
+          <a href="{{ url_for('expediente_view', paciente_id=p.id) }}">Ver expediente</a>
+          {% if puede_editar_expediente %}
+            · <a href="{{ url_for('expediente_edit', paciente_id=p.id) }}">Editar expediente</a>
+          {% endif %}
+          · <a href="{{ url_for('doctor_consultas', paciente_id=p.id) }}">Ver citas pendientes</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+
+<p><a href="{{ url_for('dashboard') }}">← Volver al inicio</a></p>
+{% endblock %}

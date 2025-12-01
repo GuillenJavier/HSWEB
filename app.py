@@ -12,12 +12,14 @@ from database import SessionLocal, init_db
 from models import Usuario, Medico, Cita, TipoUsuario, EstadoCita, Expediente
 from utils import has_overlap
 
+# ----------------- APP & LOGIN -----------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+
 init_db()
 
 login_manager = LoginManager()
-login_manager.login_view = "login"
+login_manager.login_view = "login"  # endpoint al que redirige si no estás autenticado
 login_manager.init_app(app)
 
 @contextmanager
@@ -37,15 +39,18 @@ def load_user(user_id):
     with get_db() as db:
         return db.get(Usuario, int(user_id))
 
-def saludo_actual():
-    hora = datetime.now().hour
-    if 5 <= hora <= 11:
-        return "Buen día"
-    elif 12 <= hora <= 18:
-        return "Buenas tardes"
-    else:
-        return "Buenas noches"
 
+# ----------------- HELPERS -----------------
+def saludo_actual():
+    h = datetime.now().hour
+    if 5 <= h <= 11:
+        return "Buen día"
+    elif 12 <= h <= 18:
+        return "Buenas tardes"
+    return "Buenas noches"
+
+
+# ----------------- DASHBOARD -----------------
 @app.route("/")
 @login_required
 def dashboard():
@@ -67,8 +72,8 @@ def dashboard():
                 saludo = saludo_actual()
                 doctor_nombre = f"Dr. {medico.usuario.nombre} {medico.usuario.apellido}"
 
-            # --- NUEVO: lista de pacientes del doctor (únicos) ---
             if medico:
+                # Pacientes únicos que han tenido citas con este médico
                 pacientes = (
                     db.query(Usuario)
                     .join(Cita, Cita.paciente_id == Usuario.id)
@@ -77,7 +82,7 @@ def dashboard():
                     .order_by(Usuario.apellido.asc(), Usuario.nombre.asc())
                     .all()
                 )
-                # conteo de citas pendientes por paciente (>= ahora)
+                # Conteo de citas pendientes por paciente
                 ahora = datetime.now()
                 rows = (
                     db.query(Cita.paciente_id, func.count(Cita.id))
@@ -95,21 +100,10 @@ def dashboard():
             joinedload(Cita.medico).joinedload(Medico.usuario),
             joinedload(Cita.paciente),
         )
-
         if current_user.tipo == TipoUsuario.MEDICO and medico:
-            citas = (
-                base_query
-                .filter(Cita.medico_id == medico.id)
-                .order_by(Cita.start_at.desc())
-                .all()
-            )
+            citas = base_query.filter(Cita.medico_id == medico.id).order_by(Cita.start_at.desc()).all()
         elif current_user.tipo == TipoUsuario.PACIENTE:
-            citas = (
-                base_query
-                .filter(Cita.paciente_id == current_user.id)
-                .order_by(Cita.start_at.desc())
-                .all()
-            )
+            citas = base_query.filter(Cita.paciente_id == current_user.id).order_by(Cita.start_at.desc()).all()
         else:
             citas = base_query.order_by(Cita.start_at.desc()).all()
 
@@ -120,11 +114,12 @@ def dashboard():
         EstadoCita=EstadoCita,
         saludo=saludo,
         doctor_nombre=doctor_nombre,
-        pacientes=pacientes,              # <-- NUEVO
-        pending_counts=pending_counts     # <-- NUEVO
+        pacientes=pacientes,
+        pending_counts=pending_counts
     )
 
-# ---------- Auth ----------
+
+# ----------------- AUTH -----------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -139,6 +134,7 @@ def register():
             if db.query(Usuario).filter_by(email=email).first():
                 flash("El correo ya está registrado", "warning")
                 return redirect(url_for("register"))
+
             u = Usuario(
                 nombre=nombre,
                 apellido=apellido,
@@ -148,29 +144,37 @@ def register():
             )
             db.add(u)
             db.flush()
+
             if u.tipo == TipoUsuario.MEDICO:
                 if not especialidad:
                     flash("Debes indicar la especialidad del médico", "warning")
                     return redirect(url_for("register"))
                 m = Medico(usuario_id=u.id, especialidad=especialidad)
                 db.add(m)
+
         flash("Registro exitoso. Inicia sesión.", "success")
         return redirect(url_for("login"))
     return render_template("register.html", TipoUsuario=TipoUsuario)
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         password = request.form["password"]
+
         with get_db() as db:
             u = db.query(Usuario).filter_by(email=email).first()
             if not u or not check_password_hash(u.password_hash, password):
                 flash("Credenciales inválidas", "danger")
                 return redirect(url_for("login"))
+
             login_user(u)
-            return redirect(url_for("dashboard"))
+            next_url = request.args.get("next")
+            return redirect(next_url or url_for("dashboard"))
+
     return render_template("login.html")
+
 
 @app.route("/logout")
 @login_required
@@ -178,7 +182,8 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
-# ---------- Citas ----------
+
+# ----------------- CITAS -----------------
 @app.route("/citas")
 @login_required
 def citas_list():
@@ -191,27 +196,17 @@ def citas_list():
             joinedload(Cita.medico).joinedload(Medico.usuario),
             joinedload(Cita.paciente),
         )
-
         if current_user.tipo == TipoUsuario.MEDICO and medico:
-            citas = (
-                base_query
-                .filter(Cita.medico_id == medico.id)
-                .order_by(Cita.start_at.desc())
-                .all()
-            )
+            citas = base_query.filter(Cita.medico_id == medico.id).order_by(Cita.start_at.desc()).all()
         elif current_user.tipo == TipoUsuario.PACIENTE:
-            citas = (
-                base_query
-                .filter(Cita.paciente_id == current_user.id)
-                .order_by(Cita.start_at.desc())
-                .all()
-            )
+            citas = base_query.filter(Cita.paciente_id == current_user.id).order_by(Cita.start_at.desc()).all()
         else:
             citas = base_query.order_by(Cita.start_at.desc()).all()
 
         medicos = db.query(Medico).options(joinedload(Medico.usuario)).all()
 
     return render_template("appointments_list.html", citas=citas, medicos=medicos, EstadoCita=EstadoCita)
+
 
 @app.route("/citas/nueva", methods=["GET", "POST"])
 @login_required
@@ -233,6 +228,7 @@ def citas_new():
             if has_overlap(db, medico_id, start_at, end_at):
                 flash("El médico ya tiene una cita en ese horario", "warning")
                 return redirect(url_for("citas_new"))
+
             cita = Cita(
                 medico_id=medico_id,
                 paciente_id=current_user.id,
@@ -242,10 +238,12 @@ def citas_new():
                 notas=notas,
             )
             db.add(cita)
+
         flash("Cita creada", "success")
         return redirect(url_for("citas_list"))
 
     return render_template("appointments_new.html", medicos=medicos)
+
 
 @app.route("/citas/<int:cita_id>/editar", methods=["GET", "POST"])
 @login_required
@@ -270,6 +268,7 @@ def citas_edit(cita_id: int):
         if current_user.tipo == TipoUsuario.MEDICO:
             medico_actual = db.query(Medico).filter(Medico.usuario_id == current_user.id).first()
 
+    # permisos para ver/editar
     puede_ver = (
         current_user.tipo == TipoUsuario.ADMIN
         or (current_user.tipo == TipoUsuario.PACIENTE and current_user.id == cita.paciente_id)
@@ -299,6 +298,7 @@ def citas_edit(cita_id: int):
 
             target_medico_id = c.medico_id
 
+            # Admin y Médico pueden modificar todo
             if current_user.tipo in (TipoUsuario.ADMIN, TipoUsuario.MEDICO):
                 if "medico_id" in request.form:
                     try:
@@ -321,8 +321,7 @@ def citas_edit(cita_id: int):
                 )
                 c.estado = EstadoCita(estado_val)
                 c.notas = request.form.get("notas") or None
-            else:
-                target_medico_id = c.medico_id
+            # Paciente: solo fechas (ya tomadas arriba)
 
             if has_overlap(db, target_medico_id, start_at, end_at, exclude_id=c.id):
                 flash("El médico ya tiene una cita en ese horario", "warning")
@@ -336,8 +335,8 @@ def citas_edit(cita_id: int):
         return redirect(url_for("citas_list"))
 
     es_admin = current_user.tipo == TipoUsuario.ADMIN
-    es_medico = current_user.tipo == TipoUsuario.MEDICO and medico_actual and medico_actual.id == cita.medico_id
-    puede_editar_todo = es_admin or es_medico
+    es_medico_prop = current_user.tipo == TipoUsuario.MEDICO and medico_actual and medico_actual.id == cita.medico_id
+    puede_editar_todo = es_admin or es_medico_prop
 
     return render_template(
         "appointments_edit.html",
@@ -346,6 +345,7 @@ def citas_edit(cita_id: int):
         EstadoCita=EstadoCita,
         puede_editar_todo=puede_editar_todo
     )
+
 
 @app.route("/citas/<int:cita_id>/cancelar", methods=["POST"])
 @login_required
@@ -369,6 +369,7 @@ def citas_cancel(cita_id: int):
             flash("No tienes permisos para cancelar esta cita", "danger")
             return redirect(url_for("citas_list"))
 
+        # Paciente solo puede cancelar con 24h de anticipación
         if current_user.tipo == TipoUsuario.PACIENTE:
             ahora = datetime.now()
             if c.start_at - ahora < timedelta(hours=24):
@@ -380,7 +381,8 @@ def citas_cancel(cita_id: int):
     flash("Cita cancelada", "success")
     return redirect(url_for("citas_list"))
 
-# ---------- Doctores ----------
+
+# ----------------- DOCTORES -----------------
 @app.route("/doctores")
 @login_required
 def doctores_list():
@@ -389,6 +391,65 @@ def doctores_list():
     with get_db() as db:
         doctores = db.query(Medico).options(joinedload(Medico.usuario)).order_by(Medico.id.asc()).all()
     return render_template("doctores_list.html", doctores=doctores)
+
+
+@app.route("/doctor/<int:medico_id>")
+@login_required
+def doctor_perfil(medico_id: int):
+    with get_db() as db:
+        medico = (
+            db.query(Medico)
+            .options(joinedload(Medico.usuario))
+            .filter(Medico.id == medico_id)
+            .first()
+        )
+        if not medico:
+            flash("Médico no encontrado", "warning")
+            return redirect(url_for("dashboard"))
+
+        es_admin = current_user.tipo == TipoUsuario.ADMIN
+        es_el_mismo_medico = False
+        if current_user.tipo == TipoUsuario.MEDICO:
+            medico_actual = db.query(Medico).filter(Medico.usuario_id == current_user.id).first()
+            es_el_mismo_medico = bool(medico_actual and medico_actual.id == medico.id)
+
+        if not (es_admin or es_el_mismo_medico):
+            abort(403)
+
+        hoy_inicio = datetime.combine(datetime.today().date(), time.min)
+        citas = (
+            db.query(Cita)
+            .options(
+                joinedload(Cita.paciente),
+                joinedload(Cita.medico).joinedload(Medico.usuario),
+            )
+            .filter(
+                Cita.medico_id == medico.id,
+                Cita.start_at >= hoy_inicio,
+            )
+            .order_by(Cita.start_at.asc())
+            .all()
+        )
+
+        pacientes = (
+            db.query(Usuario)
+            .join(Cita, Cita.paciente_id == Usuario.id)
+            .filter(Cita.medico_id == medico.id)
+            .distinct()
+            .order_by(Usuario.apellido.asc(), Usuario.nombre.asc())
+            .all()
+        )
+
+    puede_editar_expediente = es_admin or es_el_mismo_medico
+    return render_template(
+        "doctor_perfil.html",
+        medico=medico,
+        citas=citas,
+        pacientes=pacientes,
+        EstadoCita=EstadoCita,
+        puede_editar_expediente=puede_editar_expediente
+    )
+
 
 @app.route("/doctor/consultas")
 @login_required
@@ -428,8 +489,9 @@ def doctor_consultas():
         "doctor_consultas.html",
         citas=citas,
         EstadoCita=EstadoCita,
-        selected_paciente=selected_paciente  # <-- NUEVO
+        selected_paciente=selected_paciente
     )
+
 
 @app.route("/doctor/consultas/concluidas")
 @login_required
@@ -459,10 +521,42 @@ def doctor_concluidas():
 
     return render_template("doctor_concluidas.html", citas=citas, EstadoCita=EstadoCita)
 
-# ---------- Expediente ----------
+
+@app.route("/doctor/expedientes")
+@login_required
+def doctor_expedientes():
+    """Lista de pacientes atendidos por el doctor con acceso a sus expedientes."""
+    if current_user.tipo != TipoUsuario.MEDICO:
+        abort(403)
+
+    with get_db() as db:
+        medico = db.query(Medico).filter(Medico.usuario_id == current_user.id).first()
+        if not medico:
+            flash("No hay registro de médico asociado a tu usuario.", "warning")
+            return redirect(url_for("dashboard"))
+
+        pacientes = (
+            db.query(Usuario)
+            .join(Cita, Cita.paciente_id == Usuario.id)
+            .filter(Cita.medico_id == medico.id)
+            .distinct()
+            .order_by(Usuario.apellido.asc(), Usuario.nombre.asc())
+            .all()
+        )
+
+    # El propio médico puede editar expedientes
+    return render_template(
+        "doctor_expedientes.html",
+        pacientes=pacientes,
+        puede_editar_expediente=True
+    )
+
+
+# ----------------- EXPEDIENTE -----------------
 @app.route("/expediente/<int:paciente_id>")
 @login_required
 def expediente_view(paciente_id: int):
+    # Paciente solo ve el suyo; médico/admin pueden ver cualquiera
     if current_user.tipo == TipoUsuario.PACIENTE and current_user.id != paciente_id:
         abort(403)
 
@@ -487,6 +581,7 @@ def expediente_view(paciente_id: int):
         puede_editar=puede_editar
     )
 
+
 @app.route("/expediente/<int:paciente_id>/editar", methods=["GET", "POST"])
 @login_required
 def expediente_edit(paciente_id: int):
@@ -500,6 +595,7 @@ def expediente_edit(paciente_id: int):
             return redirect(url_for("dashboard"))
 
         expediente = db.query(Expediente).filter(Expediente.paciente_id == paciente_id).first()
+
         if request.method == "POST":
             antecedentes = request.form.get("antecedentes") or None
             alergias = request.form.get("alergias") or None
@@ -521,11 +617,13 @@ def expediente_edit(paciente_id: int):
             flash("Expediente guardado", "success")
             return redirect(url_for("expediente_view", paciente_id=paciente_id))
 
+    # GET (segunda consulta para hidratar si hizo rollback previo)
     with get_db() as db:
         expediente = db.query(Expediente).filter(Expediente.paciente_id == paciente_id).first()
 
     return render_template("expediente_edit.html", paciente=paciente, expediente=expediente)
 
-# --------- Run ---------
+
+# ----------------- RUN -----------------
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)

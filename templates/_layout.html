@@ -5,6 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}HealthSystem{% endblock %}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+
+  <style>
+    /* --- Utilidades --- */
+    .center {
+      text-align: center;
+    }
+    .action-bar {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 1rem 0 1.5rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.65rem 1rem;
+      border-radius: 999px;
+      text-decoration: none !important;
+      border: 1px solid transparent;
+      transition: transform .08s ease, box-shadow .2s ease, background .2s ease;
+      font-weight: 600;
+      letter-spacing: .2px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-inverse);
+      box-shadow: 0 6px 18px rgba(0,0,0,.08);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.03);
+      box-shadow: 0 8px 22px rgba(0,0,0,.12);
+    }
+
+    .btn-secondary {
+      background: var(--muted-border-color);
+      color: var(--muted-color);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    /* Tarjetas suaves para secciones */
+    .card {
+      border: 1px solid var(--muted-border-color);
+      border-radius: 16px;
+      padding: 1.25rem;
+      background: var(--card-background-color, var(--background-color));
+      box-shadow: 0 8px 24px rgba(0,0,0,.04);
+    }
+
+    /* Tabla más limpia */
+    table {
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.04);
+    }
+    thead th {
+      background: var(--muted-border-color);
+    }
+    tbody tr:hover {
+      background: color-mix(in srgb, var(--muted-border-color) 40%, transparent);
+    }
+  </style>
 </head>
 <body>
   <nav class="container">
@@ -14,6 +90,13 @@
     <ul>
       {% if current_user.is_authenticated %}
         <li><a href="{{ url_for('dashboard') }}">Inicio</a></li>
+        <li><a href="{{ url_for('citas_list') }}">Citas</a></li>
+        {% if current_user.tipo == 'PACIENTE' %}
+          <li><a href="{{ url_for('expediente_view', paciente_id=current_user.id) }}">Mi expediente</a></li>
+        {% endif %}
+        {% if current_user.tipo == 'ADMIN' or current_user.tipo == 'MEDICO' %}
+          <li><a href="{{ url_for('doctores_list') }}">Doctores</a></li>
+        {% endif %}
         <li><a href="{{ url_for('logout') }}">Salir</a></li>
       {% else %}
         <li><a href="{{ url_for('login') }}">Entrar</a></li>
