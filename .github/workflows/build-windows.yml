@@ -1,9 +1,9 @@
 name: build-windows
 
 on:
-  workflow_dispatch: {}         # lo puedes lanzar manualmente
+  workflow_dispatch: {}
   push:
-    branches: [ main ]          # y/o corre al hacer push a main
+    branches: [ main ]
 
 jobs:
   build:
@@ -23,11 +23,21 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Show tree
+        run: |
+          echo "Root:"; dir
+
       - name: Build exe with PyInstaller (no console)
         env:
-          BUILDING_EXE: "1"   # si agregaste el parche para no correr init_db() en build
+          BUILDING_EXE: "1"
         run: >
-          pyinstaller app.py --name "HealthSystem" --onefile --noconfirm --clean --noconsole
+          pyinstaller app.py
+          --name "HealthSystem"
+          --onefile
+          --noconfirm
+          --clean
+          --noconsole
+          --paths .
           --add-data "templates;templates"
           --add-data "static;static"
           --hidden-import sqlalchemy

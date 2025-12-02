@@ -1,3 +1,16 @@
+# --- bootstrap path for PyInstaller onefile (import local modules) ---
+import os, sys
+if getattr(sys, "frozen", False):
+    # Ejecutable: asegura que Python vea el paquete extraído por PyInstaller
+    sys.path.insert(0, os.path.dirname(sys.executable))
+    if hasattr(sys, "_MEIPASS"):
+        sys.path.insert(0, sys._MEIPASS)
+else:
+    # Ejecución normal: carpeta del proyecto
+    sys.path.insert(0, os.path.dirname(__file__))
+# --- end bootstrap ---
+
+
 from datetime import datetime, time, timedelta
 from contextlib import contextmanager
 import os, secrets
@@ -625,5 +638,14 @@ def expediente_edit(paciente_id: int):
 
 
 # ----------------- RUN -----------------
+# al final de app.py
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    import os, webbrowser, threading, time
+
+    def open_browser():
+        # pequeña espera para que el server arranque
+        time.sleep(0.8)
+        webbrowser.open(f"http://127.0.0.1:{os.environ.get('PORT', 5000)}")
+
+    threading.Thread(target=open_browser, daemon=True).start()
+    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", 5000)), debug=False)
