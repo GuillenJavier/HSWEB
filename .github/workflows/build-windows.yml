@@ -24,15 +24,9 @@ jobs:
           pip install pyinstaller
 
       - name: Build exe with PyInstaller
-        run: |
-          pyinstaller app.py --name "HealthSystem" --onefile ^
-            --add-data "templates;templates" ^
-            --add-data "static;static"
-          # Si falla por SQLAlchemy, prueba con hidden-imports:
-          # pyinstaller app.py --name "HealthSystem" --onefile ^
-          #   --add-data "templates;templates" ^
-          #   --add-data "static;static" ^
-          #   --hidden-import sqlalchemy.orm --hidden-import sqlalchemy.sql.default_comparator
+        env:
+          BUILDING_EXE: "1"   # evita init_db() si aplicaste el parche
+        run: pyinstaller app.py --name "HealthSystem" --onefile --noconfirm --clean --add-data "templates;templates" --add-data "static;static" --hidden-import sqlalchemy --hidden-import sqlalchemy.orm --hidden-import sqlalchemy.sql.default_comparator
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
