@@ -1,9 +1,9 @@
 name: build-windows
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch: {}         # lo puedes lanzar manualmente
   push:
-    branches: [ main ]
+    branches: [ main ]          # y/o corre al hacer push a main
 
 jobs:
   build:
@@ -23,10 +23,16 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build exe with PyInstaller
+      - name: Build exe with PyInstaller (no console)
         env:
-          BUILDING_EXE: "1"   # evita init_db() si aplicaste el parche
-        run: pyinstaller app.py --name "HealthSystem" --onefile --noconfirm --clean --add-data "templates;templates" --add-data "static;static" --hidden-import sqlalchemy --hidden-import sqlalchemy.orm --hidden-import sqlalchemy.sql.default_comparator
+          BUILDING_EXE: "1"   # si agregaste el parche para no correr init_db() en build
+        run: >
+          pyinstaller app.py --name "HealthSystem" --onefile --noconfirm --clean --noconsole
+          --add-data "templates;templates"
+          --add-data "static;static"
+          --hidden-import sqlalchemy
+          --hidden-import sqlalchemy.orm
+          --hidden-import sqlalchemy.sql.default_comparator
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
