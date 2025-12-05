@@ -223,28 +223,57 @@ def citas_list():
 
 @app.route("/citas/nueva", methods=["GET", "POST"])
 @login_required
-def citas_new():
+def appointments_new():
+    # Si el doctor viene desde "Agendar cita" para un paciente: ?paciente_id=
+    selected_paciente_id = request.args.get("paciente_id", type=int)
+
     with get_db() as db:
         medicos = db.query(Medico).options(joinedload(Medico.usuario)).all()
+        selected_paciente = db.get(Usuario, selected_paciente_id) if selected_paciente_id else None
 
     if request.method == "POST":
-        medico_id = int(request.form["medico_id"])
-        start_at = datetime.fromisoformat(request.form["start_at"])
-        end_at = datetime.fromisoformat(request.form["end_at"])
+        try:
+            medico_id = int(request.form["medico_id"])
+            start_at = datetime.fromisoformat(request.form["start_at"])
+            end_at = datetime.fromisoformat(request.form["end_at"])
+        except Exception:
+            flash("Datos de fecha/hora inválidos.", "warning")
+            return redirect(
+                url_for("appointments_new", paciente_id=selected_paciente_id)
+                if selected_paciente_id else url_for("appointments_new")
+            )
+
         notas = request.form.get("notas") or None
 
         if end_at <= start_at:
             flash("La hora de fin debe ser posterior al inicio", "warning")
-            return redirect(url_for("citas_new"))
+            return redirect(
+                url_for("appointments_new", paciente_id=selected_paciente_id)
+                if selected_paciente_id else url_for("appointments_new")
+            )
+
+        # ¿Para quién es la cita?
+        paciente_id = current_user.id
+        if current_user.tipo == TipoUsuario.MEDICO:
+            form_pid = request.form.get("paciente_id", type=int)
+            if form_pid:
+                paciente_id = form_pid
 
         with get_db() as db:
+            if current_user.tipo == TipoUsuario.MEDICO and not db.get(Usuario, paciente_id):
+                flash("Paciente no encontrado.", "warning")
+                return redirect(url_for("appointments_new"))
+
             if has_overlap(db, medico_id, start_at, end_at):
                 flash("El médico ya tiene una cita en ese horario", "warning")
-                return redirect(url_for("citas_new"))
+                return redirect(
+                    url_for("appointments_new", paciente_id=selected_paciente_id)
+                    if selected_paciente_id else url_for("appointments_new")
+                )
 
             cita = Cita(
                 medico_id=medico_id,
-                paciente_id=current_user.id,
+                paciente_id=paciente_id,
                 start_at=start_at,
                 end_at=end_at,
                 estado=EstadoCita.PENDIENTE,
@@ -255,7 +284,8 @@ def citas_new():
         flash("Cita creada", "success")
         return redirect(url_for("citas_list"))
 
-    return render_template("appointments_new.html", medicos=medicos)
+    return render_template("appointments_new.html", medicos=medicos, selected_paciente=selected_paciente)
+
 
 
 @app.route("/citas/<int:cita_id>/editar", methods=["GET", "POST"])
@@ -557,12 +587,109 @@ def doctor_expedientes():
             .all()
         )
 
-    # El propio médico puede editar expedientes
+        # El propio médico puede editar expedientes
     return render_template(
         "doctor_expedientes.html",
         pacientes=pacientes,
-        puede_editar_expediente=True
+        puede_editar_expediente=True,
     )
+
+
+@app.route("/doctor/pacientes/nuevo", methods=["GET", "POST"])
+@login_required
+def doctor_paciente_new():
+    """
+    El médico registra a un nuevo paciente y agenda su primera cita en un solo paso.
+    """
+    if current_user.tipo not in (TipoUsuario.MEDICO, TipoUsuario.ADMIN):
+        abort(403)
+
+    from sqlalchemy.orm import joinedload
+    import secrets
+
+    # Cargar médicos para el select (se preselecciona el médico actual si existe)
+    with get_db() as db:
+        medicos = db.query(Medico).options(joinedload(Medico.usuario)).all()
+        medico_actual = None
+        if current_user.tipo == TipoUsuario.MEDICO:
+            medico_actual = db.query(Medico).filter(Medico.usuario_id == current_user.id).first()
+
+    if request.method == "POST":
+        # ---- Datos del paciente ----
+        nombre = (request.form.get("nombre") or "").strip()
+        apellido = (request.form.get("apellido") or "").strip()
+        email = (request.form.get("email") or "").strip().lower()  # opcional
+
+        # ---- Datos de la cita ----
+        try:
+            medico_id = int(request.form["medico_id"])
+            start_at = datetime.fromisoformat(request.form["start_at"])
+            end_at = datetime.fromisoformat(request.form["end_at"])
+        except Exception:
+            flash("Completa médico e intervalos con un formato válido.", "warning")
+            return redirect(url_for("doctor_paciente_new"))
+
+        notas = request.form.get("notas") or None
+
+        if not (nombre and apellido):
+            flash("Nombre y apellido del paciente son obligatorios.", "warning")
+            return redirect(url_for("doctor_paciente_new"))
+
+        if end_at <= start_at:
+            flash("La hora de fin debe ser posterior al inicio.", "warning")
+            return redirect(url_for("doctor_paciente_new"))
+
+        # Crear paciente + cita
+        with get_db() as db:
+            # Único por email solo si se proporcionó
+            if email and db.query(Usuario).filter(Usuario.email == email).first():
+                flash("El correo ya está registrado.", "warning")
+                return redirect(url_for("doctor_paciente_new"))
+
+            # Password temporal (no pedimos contraseña en el formulario)
+            temp_password = secrets.token_urlsafe(8)[:10]
+
+            u = Usuario(
+                nombre=nombre,
+                apellido=apellido,
+                email=email or f"paciente{secrets.randbelow(999999)}@local",
+                password_hash=generate_password_hash(temp_password),
+                tipo=TipoUsuario.PACIENTE,
+            )
+            db.add(u)
+            db.flush()  # u.id disponible
+
+            # Crear expediente vacío si no existe
+            if not db.query(Expediente).filter(Expediente.paciente_id == u.id).first():
+                db.add(Expediente(paciente_id=u.id))
+
+            # Validación de traslape
+            if has_overlap(db, medico_id, start_at, end_at):
+                db.rollback()
+                flash("El médico ya tiene una cita en ese horario.", "warning")
+                return redirect(url_for("doctor_paciente_new"))
+
+            cita = Cita(
+                medico_id=medico_id,
+                paciente_id=u.id,
+                start_at=start_at,
+                end_at=end_at,
+                estado=EstadoCita.PENDIENTE,
+                notas=notas,
+            )
+            db.add(cita)
+
+        flash("Paciente registrado y cita creada correctamente.", "success")
+        return redirect(url_for("doctor_consultas"))
+
+    # GET
+    return render_template(
+        "patient_new.html",
+        medicos=medicos,
+        medico_actual=medico_actual,
+    )
+
+
 
 
 # ----------------- EXPEDIENTE -----------------
